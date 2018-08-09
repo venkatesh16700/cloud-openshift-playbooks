@@ -1,0 +1,24 @@
+---
+
+- name: test playbook
+  hosts: hosts
+  become: yes
+  tasks:
+     - name: install python libraries
+       command: sudo yum install python-pip python-devel python -y
+     
+     - name: upgrade pip
+       command: sudo pip install pip
+   
+     - name: install awscli
+       command: sudo pip install awscli
+
+     - name: install ansible packages
+       command: sudo rpm -Uvh https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
+ 
+     - name: install ansible
+       command: sudo yum -y install ansible
+
+
+       
+       
