@@ -1,0 +1,52 @@
+apiVersion: v1
+kind: Template
+labels:
+  template: config-map-template
+metadata:
+  name: config-map-template
+  annotations:
+    description: |-
+      Config maps for db options.
+objects:
+- apiVersion: v1
+  kind: ConfigMap
+  metadata:
+    name: ${CONFIG_MAP}
+    labels:
+      environments: dev_fet_hfx_int
+  data:
+    SPRING_PROFILES_ACTIVE: 'container,dev'
+    JAVA_OPTIONS: '-Djavax.net.ssl.trustStore=/var/run/secrets/java.io/keystores/truststore.jks -Djavax.net.ssl.trustStorePassword=changeit'
+- apiVersion: v1
+  kind: ConfigMap
+  metadata:
+    name: ${CONFIG_MAP}
+    labels:
+      environments: qat1_qat2
+  data:
+    SPRING_PROFILES_ACTIVE: 'container,qat'
+    JAVA_OPTIONS: '-Djavax.net.ssl.trustStore=/var/run/secrets/java.io/keystores/truststore.jks -Djavax.net.ssl.trustStorePassword=changeit'
+- apiVersion: v1
+  kind: ConfigMap
+  metadata:
+    name: ${CONFIG_MAP}
+    labels:
+      environments: stg
+  data:
+    SPRING_PROFILES_ACTIVE: 'container,stage'
+    JAVA_OPTIONS: '-Djavax.net.ssl.trustStore=/var/run/secrets/java.io/keystores/truststore.jks -Djavax.net.ssl.trustStorePassword=changeit'
+- apiVersion: v1
+  kind: ConfigMap
+  metadata:
+    name: ${CONFIG_MAP}
+    labels:
+      environments: prd
+  data:
+    SPRING_PROFILES_ACTIVE: 'container,prod'
+    JAVA_OPTIONS: '-Djavax.net.ssl.trustStore=/var/run/secrets/java.io/keystores/truststore.jks -Djavax.net.ssl.trustStorePassword=changeit'
+parameters:
+- name: CONFIG_MAP
+  description: Config Map name
+  displayName: Config Map name
+  required: true
+  value: unspecified

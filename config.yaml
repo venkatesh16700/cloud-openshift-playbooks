@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: Template
+labels:
+  template: config-map-template
+metadata:
+  name: digital-registry-configuration-template
+  annotations:
+    description: |-
+      Config maps and secrets for Digital-Registry. For more information about using this template, including OpenShift considerations, see SOME_LINK_TO_IGTB_PUBLIC_DOCS.
+      
+      NOTE: Some limitations.
+objects:
+- apiVersion: v1
+  kind: ConfigMap
+  metadata:
+    name: ${CONFIG_MAP}
+    labels:
+      environments: dev_fet_hfx_int_qat1_qat2_stg_prd
+  data:
+    VARIABLE1: VAL1
+parameters:
+- name: CONFIG_MAP
+  description: Config Map name
+  displayName: Config Map name
+  required: true
+  value: unspecified

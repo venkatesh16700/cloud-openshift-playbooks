@@ -1,0 +1,281 @@
+apiVersion: v1
+kind: Template
+metadata:
+  annotations:
+    description: |-
+      Test Template. 
+  name: 53-jdk-vault
+objects:
+- kind: BuildConfig
+  apiVersion: v1
+  kind: BuildConfig
+  metadata:
+    annotations:
+      openshift.io/generated-by: OpenShiftNewBuild
+    creationTimestamp: null
+    labels:
+      build: ${BUILD_CFG}
+    name: ${BUILD_CFG}
+  spec:
+    output:
+      to:
+        kind: ImageStreamTag
+        name: ${IMAGE_STREAM}:latest
+    postCommit: {}
+    resources: {}
+    runPolicy: Serial
+    source:
+      binary: {}
+      type: Binary
+    strategy:
+      sourceStrategy:
+        from:
+          kind: ImageStreamTag
+          name: redhat-openjdk18-openshift:1.4
+          namespace: openshift
+      type: Source
+- kind: ImageStream
+  apiVersion: v1  
+  metadata:
+    annotations:
+      openshift.io/generated-by: OpenShiftNewBuild
+    creationTimestamp: null
+    generation: 1
+    labels:
+      build: ${BUILD_CFG}
+    name: ${IMAGE_STREAM}
+  spec:
+    lookupPolicy:
+      local: false  
+- kind: DeploymentConfig
+  apiVersion: v1
+  metadata:
+    generation: 1
+    labels:
+      deploymentconfig: ${DEPLOY_CFG}
+    name: ${DEPLOY_CFG}
+  spec:
+    replicas: 1
+    selector:
+      deploymentconfig: ${DEPLOY_CFG}
+    strategy:
+      activeDeadlineSeconds: 21600
+      resources: {}
+      rollingParams:
+        intervalSeconds: 1
+        maxSurge: 25%
+        maxUnavailable: 25%
+        timeoutSeconds: 600
+        updatePeriodSeconds: 1
+      type: Rolling
+    template:
+      metadata:
+        labels:
+          deploymentconfig: ${DEPLOY_CFG}
+      spec:
+        initContainers:
+        - name: pem-to-truststore-${DEPLOY_CFG}
+          image: jfrogartdev.info53.com/fitb-pvt-cloud-test/redhat-sso-7/sso71-openshift:1.1
+          env:
+            - name: ca_bundle
+              value: /var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt
+            - name: truststore_jks
+              value: /var/run/secrets/java.io/keystores/truststore.jks
+            - name: password
+              value: changeit    
+          command: ['/bin/bash']
+          args: ['-c', "cp /etc/pki/ca-trust/extracted/java/cacerts $truststore_jks && chmod u+w $truststore_jks && csplit -z -f crt- $ca_bundle '/-----BEGIN CERTIFICATE-----/' '{*}' && for file in crt-*; do keytool -import -noprompt -keystore $truststore_jks -file $file -storepass changeit -alias service-$file; done"]
+          volumeMounts:
+            - name: keystore-volume
+              mountPath: /var/run/secrets/java.io/keystores      
+        containers:
+          - env:
+              - name: SPRING_PROFILES_ACTIVE
+                valueFrom:
+                  configMapKeyRef:
+                    key: SPRING_PROFILES_ACTIVE
+                    name: ${SHARED_CONFIG_MAP_PREFIX}-jvmopts
+              - name: GENERIC_VAL
+                valueFrom:
+                  configMapKeyRef:
+                    key: VARIABLE1
+                    name: ${CONFIG_MAP}
+              - name: DATABASE_NAME
+                valueFrom:
+                  configMapKeyRef:
+                    key: DATABASE_NAME
+                    name: ${SHARED_CONFIG_MAP_PREFIX}-dbopts
+              - name: DATABASE_HOST
+                valueFrom:
+                  configMapKeyRef:
+                    key: DATABASE_HOST
+                    name: ${SHARED_CONFIG_MAP_PREFIX}-dbopts
+              - name: DATABASE_USER
+                valueFrom:
+                  configMapKeyRef:
+                    key: DATABASE_USER
+                    name: ${SHARED_CONFIG_MAP_PREFIX}-dbopts
+              - name: JAVA_OPTIONS
+                valueFrom:
+                  configMapKeyRef:
+                    key: JAVA_OPTIONS
+                    name: ${SHARED_CONFIG_MAP_PREFIX}-jvmopts
+              - name: VAULT_HOST
+                valueFrom:
+                  configMapKeyRef:
+                    key: VAULT_HOST
+                    name: ${SHARED_CONFIG_MAP_PREFIX}-vltopts
+              - name: VAULT_PORT
+                valueFrom:
+                  configMapKeyRef:
+                    key: VAULT_PORT
+                    name: ${SHARED_CONFIG_MAP_PREFIX}-vltopts
+              - name: VAULT_ROLE
+                valueFrom:
+                  configMapKeyRef:
+                    key: VAULT_ROLE_JAVA
+                    name: ${SHARED_CONFIG_MAP_PREFIX}-vltopts                    
+            image: ${IMAGE_STREAM}:latest
+            imagePullPolicy: IfNotPresent
+            name: ${DEPLOY_CFG}
+            ports:
+            - containerPort: 8080
+              protocol: TCP               
+            livenessProbe:
+              failureThreshold: 3
+              httpGet:
+                path: /actuator/health/
+                port: 8080
+                scheme: HTTP
+              initialDelaySeconds: 60
+              periodSeconds: 10
+              successThreshold: 1
+              timeoutSeconds: 1
+            readinessProbe:
+              failureThreshold: 3
+              httpGet:
+                path: /actuator/health/
+                port: 8080
+                scheme: HTTP
+              initialDelaySeconds: 60
+              periodSeconds: 10
+              successThreshold: 1
+              timeoutSeconds: 1
+            volumeMounts:
+            - name: keystore-volume
+              mountPath: /var/run/secrets/java.io/keystores                      
+        volumes:
+        - name: keystore-volume
+          emptyDir: {}         
+    test: false
+    triggers:
+    - imageChangeParams:
+        automatic: false
+        containerNames:
+        - ${DEPLOY_CFG}
+        from:
+          kind: ImageStreamTag
+          name: ${IMAGE_STREAM}:${IMAGE_TAG}
+      type: ImageChange 
+- kind: Service
+  apiVersion: v1
+  metadata:
+    labels:
+      deploymentconfig: ${DEPLOY_CFG}
+    name: ${SERVICE_NM}
+  spec:
+    ports:
+    - name: ${DEPLOY_CFG}
+      port: 8080
+      protocol: TCP
+      targetPort: 8080
+    selector:
+      deploymentconfig: ${DEPLOY_CFG} 
+    sessionAffinity: None
+    type: ClusterIP
+- kind: Route
+  apiVersion: v1
+  metadata:
+    name: ${ROUTE_NM}
+    labels:
+      deploymentconfig: ${DEPLOY_CFG}
+    annotations:
+      template.openshift.io/expose-uri: "http://{.spec.host}{.spec.path}"
+  spec:
+    port:
+      targetPort: 8080
+    tls:
+      termination: edge      
+    to:
+      kind: Service
+      name: ${SERVICE_NM}
+      weight: 100  
+- kind: HorizontalPodAutoscaler 
+  apiVersion: autoscaling/v1
+  metadata:
+    name: ${HPA_NAME}
+  labels:
+    deploymentconfig: ${DEPLOY_CFG}
+  spec:
+    scaleTargetRef:
+      kind: DeploymentConfig 
+      name: ${DEPLOY_CFG}
+      apiVersion: apps.openshift.io/v1 
+      subresource: scale
+    minReplicas: 1 
+    maxReplicas: 3
+    cpuUtilization:
+      targetCPUUtilizationPercentage: 80        
+parameters:
+- name: BUILD_CFG
+  description: Build Config
+  displayName: Build Config
+  required: true
+  value: unspecified 
+- name: IMAGE_STREAM
+  description: Image Stream
+  displayName: Image Stream
+  required: true
+  value: unspcified
+- name: DEPLOY_CFG 
+  description: Deployment Config
+  displayName: Deployment Config
+  required: true
+  value: unspecified
+- name: SERVICE_NM 
+  description: Service Name
+  displayName: Service Name
+  required: true
+  value: unspecified
+- name: ROUTE_NM 
+  description: Route Name
+  displayName: Route Name
+  required: true
+  value: unspecified    
+- name: CONFIG_MAP
+  description: Config Map name
+  displayName: Config Map name
+  required: true
+  value: unspecified
+- name: SHARED_CONFIG_MAP_PREFIX
+  description: Shared Config Map prefix name
+  displayName: Shared Config Map prefix name
+  required: true
+  value: unspecified        
+- name: IMAGE_TAG
+  description: Image tag to apply
+  displayName: Image Tag
+  required: true
+  value: undefined
+- name: DEPLOYMENT_NAME
+  description: Name of deployment
+  displayName: Deployment Name
+  required: true
+  value: undefined
+- name: HPA_NAME
+  description: Name of horizontal autoscaler
+  displayName: Horizontal Autoscaler Name
+  required: true
+  value: undefined
+  
+
